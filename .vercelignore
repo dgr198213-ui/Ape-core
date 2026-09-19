@@ -1,0 +1,6 @@
+tests
+migrations
+scripts
+.github
+config.example.json
+node_modules

@@ -1,0 +1,32 @@
+# Ciclo del agente: percibe, recuerda, planifica y PROPONE. No ejecuta nada.
+# Secretos del repositorio: APE_DSN_AGENT (rol ape_agent, cadena del pooler), APE_CONFIG_JSON (contenido
+# de config.json con tus endpoints de modelos) y las claves que ese JSON referencie.
+name: cycle
+on:
+  schedule: [{ cron: "7 * * * *" }]
+  workflow_dispatch:
+concurrency:
+  group: ape-cycle
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install .
+      - name: Ejecutar un ciclo (solo propone)
+        env:
+          APE_DSN_AGENT: ${{ secrets.APE_DSN_AGENT }}
+          APE_CONFIG_JSON: ${{ secrets.APE_CONFIG_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          APE_TELEGRAM_TOKEN: ${{ secrets.APE_TELEGRAM_TOKEN }}
+          APE_TELEGRAM_CHAT_ID: ${{ secrets.APE_TELEGRAM_CHAT_ID }}
+        run: |
+          printf '%s' "$APE_CONFIG_JSON" > "$RUNNER_TEMP/config.json"
+          APE_CONFIG="$RUNNER_TEMP/config.json" ape cycle

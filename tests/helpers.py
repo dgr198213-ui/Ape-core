@@ -74,3 +74,15 @@ def as_agent(conninfo):
     conn.execute("set session authorization ape_agent")
     conn.execute("set search_path = ape, extensions, public, pg_catalog")
     return conn
+
+
+def propose_action(agent, tool="payment.execute", args=None, cost=20, hash_=None, origin="agent"):
+    """Inserta una propuesta como ape_agent (como haría el ciclo). Devuelve el id."""
+    import uuid
+    from psycopg.types.json import Jsonb
+    from ape.canon import args_hash
+    args = args if args is not None else {"to": "proveedor", "eur": 20}
+    return str(agent.execute(
+        "insert into ape.action(tool, args, args_hash, cost_eur, origin, idempotency_key) "
+        "values (%s, %s, %s, %s, %s, %s) returning id",
+        (tool, Jsonb(args), hash_ or args_hash(args), cost, origin, uuid.uuid4().hex)).fetchone()[0])

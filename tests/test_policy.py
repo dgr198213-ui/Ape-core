@@ -201,3 +201,13 @@ def test_propiedad_cambiar_args_invalida_la_aprobacion(r, other_args):
     d = ENGINE.evaluate(changed, PolicyState(), ap, now=NOW)
     if d.level == Level.N3:
         assert not d.allowed
+
+
+def test_secret_bytes():
+    from ape.canon import secret_bytes
+    assert secret_bytes("aa" * 32) == bytes.fromhex("aa" * 32)                 # hexadecimal: se decodifica
+    assert secret_bytes("Zk3-p9Q_una cadena larga de un gestor 8842") == "Zk3-p9Q_una cadena larga de un gestor 8842".encode()
+    assert secret_bytes("  " + "ab" * 16 + "  ") == bytes.fromhex("ab" * 16)      # se recortan espacios
+    for bad in ("", "corta", "aa" * 15, None):
+        with pytest.raises(ValueError):
+            secret_bytes(bad)

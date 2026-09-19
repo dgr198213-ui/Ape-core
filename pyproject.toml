@@ -3,7 +3,7 @@ name = "ape-core"
 version = "0.1.0"
 description = "Asistente Personal Evolutivo — Fase 0: núcleo seguro (motor de políticas, auditoría, clasificación de datos)"
 requires-python = ">=3.11"
-dependencies = ["psycopg[binary]>=3.1"]
+dependencies = ["psycopg[binary]>=3.1", "flask>=3.0"]
 
 [project.scripts]
 ape = "ape.cli:main"
@@ -18,6 +18,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"ape.panel" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

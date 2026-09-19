@@ -22,6 +22,19 @@ def args_hash(args: Any) -> str:
     return sha256_hex(canonical_json(args))
 
 
+def secret_bytes(raw: str) -> bytes:
+    """Clave de aprobaciones a partir de una cadena. Si es hexadecimal se decodifica; si no, se usa
+    su texto UTF-8 (así vale cualquier cadena larga de un gestor de contraseñas). Mínimo 32 caracteres.
+    El panel, la CLI y el ejecutor DEBEN usar esta misma función."""
+    import re
+    raw = (raw or "").strip()
+    if len(raw) < 32:
+        raise ValueError("la clave de aprobaciones debe tener al menos 32 caracteres")
+    if re.fullmatch(r"[0-9a-fA-F]+", raw) and len(raw) % 2 == 0:
+        return bytes.fromhex(raw)
+    return raw.encode("utf-8")
+
+
 def money(amount: Decimal | int | str) -> str:
     """Importe con dos decimales, formato estable para firmar."""
     return format(Decimal(amount).quantize(Decimal("0.01")), "f")

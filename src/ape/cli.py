@@ -3,7 +3,7 @@
 Variables de entorno:
   APE_DSN_ADMIN         conexión del propietario (aprobar, parar, escribir en la bandeja)
   APE_DSN_AGENT         conexión del rol ape_agent (solo para `cycle`)
-  APE_APPROVAL_SECRET   clave HMAC de aprobaciones, en hexadecimal (solo para `approve`)
+  APE_APPROVAL_SECRET   clave de aprobaciones, mínimo 32 caracteres (solo para `approve`)
   APE_CONFIG            ruta al JSON de configuración (endpoints de modelos, Telegram)
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ import os
 import sys
 
 from . import admin
+from .canon import secret_bytes
 from .config import ConfigError, load_config, load_notifier, load_router
 from .cycle import Cycle
 
@@ -22,18 +23,14 @@ def _conn(var: str):
     dsn = os.environ.get(var)
     if not dsn:
         raise SystemExit(f"Falta {var}")
-    return psycopg.connect(dsn, autocommit=True)
+    return psycopg.connect(dsn, autocommit=True, prepare_threshold=None)  # compatible con el pooler
 
 
 def _secret() -> bytes:
-    raw = os.environ.get("APE_APPROVAL_SECRET", "")
     try:
-        key = bytes.fromhex(raw)
-    except ValueError:
-        raise SystemExit("APE_APPROVAL_SECRET debe ser hexadecimal") from None
-    if len(key) < 16:
-        raise SystemExit("APE_APPROVAL_SECRET demasiado corta (mínimo 16 bytes)")
-    return key
+        return secret_bytes(os.environ.get("APE_APPROVAL_SECRET", ""))
+    except ValueError as exc:
+        raise SystemExit(f"APE_APPROVAL_SECRET: {exc}") from None
 
 
 def cmd_say(a):

@@ -1,4 +1,4 @@
-# ape-core — Fases 0 y 1 del Asistente Personal Evolutivo
+# ape-core — Asistente Personal Evolutivo (Fases 0 y 1 + panel móvil)
 
 Fase 0: núcleo seguro. Fase 1: memoria con olvido activo, bandeja de entrada, ciclo que **percibe, recuerda, planifica y propone (nunca ejecuta)**, aprobaciones y parada desde la línea de comandos.
 
@@ -45,46 +45,53 @@ APE_DSN_AGENT=... APE_CONFIG=config.json ape cycle   # un ciclo (solo propone)
 
 ## Estado de verificación
 
-- **150 pruebas en verde** contra **PostgreSQL 16.15 con pgvector 0.6.0 reales**, incluidos servidores HTTP reales en loopback para el router y Telegram, y la CLI ejecutada como proceso.
-- Se probó por **mutación** (7 mutaciones: aprobación en la BD y en el motor, elegibilidad del router, contaminación por origen externo, firma con hash falso, suelo de sensibilidad, escape de `<untrusted>`): las pruebas fallan en todas (22 fallos en total).
-- **Desplegado y verificado en Supabase** (proyecto `ape-core`, `eu-central-1`, plan gratuito, PostgreSQL 17, pgvector 0.8.2), 19-sep-2026, migraciones 0001–0004:
-  - Las 19 funciones del esquema tienen el mismo código, `SECURITY DEFINER` y `search_path` que las de la base local construida desde estos archivos.
+- **207 pruebas en verde** (incluida una prueba de la interfaz móvil con jsdom contra el servidor real) contra **PostgreSQL 16.15 con pgvector 0.6.0 reales**, incluidos servidores HTTP reales en loopback para el router y Telegram, y la CLI ejecutada como proceso.
+- Se probó por **mutación** (15 mutaciones: aprobación en la BD y en el motor, elegibilidad del router, contaminación por origen externo, firma con hash falso, suelo de sensibilidad, escape de `<untrusted>`, y en el panel: CSRF, código de un solo uso, TOTP reutilizable, guardia SQL, `HttpOnly`, bloqueo por intentos, `Origin`, lectura de memoria): las pruebas detectan todas.
+- **Desplegado y verificado en Supabase** (proyecto `ape-core`, `eu-central-1`, plan gratuito, PostgreSQL 17, pgvector 0.8.2), 19-sep-2026, migraciones 0001–0005:
+  - Las 20 funciones del esquema tienen el mismo código, `SECURITY DEFINER` y `search_path` que las de la base local construida desde estos archivos.
   - Pruebas de comportamiento en la base real (con marcha atrás): nivel fijado por el registro, N3 sin aprobación rechazado, aprobaciones inválidas rechazadas, libro de gasto, parada, auditoría íntegra e inmutable, memoria vectorial. Todas correctas.
   - Privilegios por catálogo: el agente y el ejecutor no tienen ningún privilegio de escritura sobre el núcleo; el ejecutor solo puede actualizar la columna `status`; nadie salvo el propietario puede ejecutar `ape.kill()`; los roles de la API (`anon`, `authenticated`, `service_role`) no tienen acceso al esquema `ape`.
   - Avisos de seguridad de Supabase: 0 tras `0003_hardening.sql` (antes había 4).
 - **Cabeza de la auditoría anclada** (14 eventos, 19-sep-2026, tras la Fase 1): `3cc05a995b96ac96b3f89226dd9b0049a09f96813ce098c5c56ce7cd0f7634f4` (la anterior, con 11 eventos: `4390fe91…f669a`). Cualquier recorte del final de la cadena cambiaría este valor.
 - **No verificado:**
+  - **El panel desplegado en Vercel.** Está probado en local (servidor real, PostgreSQL real, interfaz en jsdom), pero no en un navegador de móvil ni en el runtime de Vercel; el primer despliegue puede pedir ajustes.
+  - **La conexión a Supabase a través del *pooler*** desde Vercel y desde GitHub Actions (el diseño ya evita sentencias preparadas, pero no lo he podido probar).
   - **Las llamadas reales a los proveedores de modelos y a Telegram.** El entorno de pruebas no tiene salida a esas redes: el router y el notificador solo se han probado contra servidores simulados en loopback.
   - **El ciclo no está programado todavía** (falta el disparador periódico) y **no hay proveedor de embeddings**: sin él, la recuperación de memoria usa la puntuación y no la similitud.
   - Los workflows de GitHub (`ci.yml`, `nightly.yml`) y la conexión desde Actions a Supabase (la conexión directa puede requerir IPv6; si falla, usar la cadena del *pooler*).
   - El comportamiento *con los roles reales* `ape_agent` y `ape_executor` en Supabase. El conector no permite conectarse como ellos, así que los triggers que dependen de `session_user` (estado forzado a `propuesta`, estrategias en sombra, rol registrado en la auditoría) solo se han probado en la base local, no en la de Supabase.
   - Que la actividad del workflow nocturno evite la pausa por inactividad del plan gratuito.
 
-## Despliegue
+## Puesta en marcha (en este orden)
 
-1. **Repositorio privado** nuevo con este contenido. Activa el escaneo de secretos.
-2. **Base de datos:** ya aplicada en `ape-core` (migraciones 0001, 0002, 0003 y 0003b). Para otra instalación (Postgres 15+ con `pgvector` y `pgcrypto`):
-   ```sh
-   DATABASE_URL_ADMIN='postgresql://...' ./scripts/apply_migrations.sh
-   ```
-   En Supabase, comprueba que el esquema `ape` **no** está en *Settings → API → Exposed schemas*.
-3. **Contraseñas de los roles** — *pendiente, hazlo tú en el editor SQL de Supabase para que no pasen por ningún chat* (una para cada uno, distintas y largas):
-   ```sql
-   alter role ape_agent    password '...';
-   alter role ape_executor password '...';
-   ```
-4. **Clave de aprobaciones** (no va en la base de datos ni en el proceso del agente):
-   ```sh
-   python -c "import secrets; print(secrets.token_hex(32))"
-   ```
-   Guárdala solo donde corra el ejecutor y el servicio de aprobación.
-5. **Secretos de GitHub:** `DATABASE_URL_ADMIN` y `AGE_PUBLIC_KEY` (`age-keygen`, guarda la clave privada fuera de GitHub).
-6. **Pruebas locales:**
-   ```sh
-   pip install -e ".[dev]"
-   pytest                                   # unitarias y propiedades
-   APE_TEST_DSN=postgresql://postgres:...@127.0.0.1:5432/postgres pytest   # + integración
-   ```
+Dónde vive cada pieza: **Supabase** (memoria y reglas) · **Vercel** (el panel web que abres en el móvil) · **GitHub Actions** (el ciclo que hace pensar al agente cada hora) · **tu equipo** (opcional: la CLI).
+
+| # | Qué | Dónde | Desde el móvil |
+|---|---|---|---|
+| 1 | Subir este código a `dgr198213-ui/Ape-core` (`git push`) | GitHub | ❌ una vez desde un PC |
+| 2 | Ponerles contraseña a los roles: `alter role ape_panel password '...'; alter role ape_agent password '...';` | Supabase → SQL Editor | ✅ |
+| 3 | Copiar las cadenas de conexión del *pooler* (Connect → Transaction pooler). El usuario es `ape_panel.<ref-del-proyecto>` y `ape_agent.<ref-del-proyecto>` | Supabase | ✅ |
+| 4 | Variables de entorno del proyecto `ape-core`: `APE_PANEL_DSN` (rol `ape_panel`), `APE_APPROVAL_SECRET` (cadena aleatoria de 32+ caracteres del gestor de contraseñas), `APE_SETUP_TOKEN` (otra cadena aleatoria, de un solo uso) | Vercel → Settings → Environment Variables | ✅ |
+| 5 | Redesplegar. Abre la URL en el móvil → **configurar**: código de configuración, frase de paso y clave para tu app de autenticación | Navegador | ✅ |
+| 6 | «Añadir a pantalla de inicio» | Navegador | ✅ |
+| 7 | Secretos del repositorio: `APE_DSN_AGENT`, `APE_CONFIG_JSON` (ver `config.example.json`), claves de los modelos | GitHub → Settings → Secrets | ✅ |
+| 8 | Opcional: botón «Ejecutar ciclo ahora»: `APE_GITHUB_TOKEN` (token fino con permiso *Actions: write* solo sobre este repo) y `APE_GITHUB_REPO=dgr198213-ui/Ape-core` en Vercel | Vercel / GitHub | ✅ |
+
+**Para reiniciar el acceso al panel** (si pierdes el móvil): en el editor SQL de Supabase, `delete from ape.panel_auth; delete from ape.panel_session;` y vuelve a configurar con un `APE_SETUP_TOKEN` nuevo.
+
+## El panel web
+
+Pantalla de inicio en el móvil, sin instalar nada. Cuatro pestañas: **Resumen** (estado, ciclo, auditoría), **Hablar** (mensaje al agente), **Pendientes** (aprobar o rechazar con un código nuevo de tu app) e **Historial**. El botón **PARAR** está siempre arriba y no pide código; **reanudar** sí.
+
+| Amenaza | Defensa |
+|---|---|
+| Alguien adivina el acceso | Frase de paso (scrypt) + código TOTP de un solo uso; bloqueo tras 5 fallos; el mismo mensaje de error para cualquier fallo |
+| Robo de sesión | Cookie `__Host-` `HttpOnly` `Secure` `SameSite=Strict`, guardada hasheada en la BD, caduca a los 30 min de inactividad y a las 12 h |
+| Petición desde otra web (CSRF) | Token por sesión en cabecera + comprobación de `Origin` |
+| Contenido del agente con código malicioso | La interfaz pinta todo como texto (nunca HTML); política CSP sin `unsafe-inline`; una prueba impide `innerHTML`/`eval` |
+| Panel comprometido | El rol `ape_panel` solo puede: escribir en la bandeja, aprobar/rechazar propuestas, parar y leer. No puede cambiar políticas, herramientas, leer la memoria, ejecutar ni tocar la auditoría |
+| Aprobar algo distinto de lo mostrado | La aprobación va ligada a los argumentos por hash; el ejecutor la rechaza si cambian |
+
 
 ## Fronteras de confianza
 
@@ -103,5 +110,5 @@ APE_DSN_AGENT=... APE_CONFIG=config.json ape cycle   # un ciclo (solo propone)
 
 ## Siguiente
 
-- **Fase 1b:** disparador periódico del ciclo, proveedor de embeddings y percepción de fuentes reales (correo, calendario).
+- **Fase 1b:** proveedor de embeddings y percepción de fuentes reales (correo, calendario). El disparador periódico ya está en `.github/workflows/cycle.yml`.
 - **Fase 2:** ejecutor con herramientas N0–N2 vía MCP; las N3 solo con aprobación válida.

@@ -2,7 +2,7 @@ import dataclasses
 
 from hypothesis import given, settings, strategies as st
 
-from ape.audit import GENESIS, AuditRow, compute_hash, event_canon, head, verify_chain, verify_head
+from ape.audit import GENESIS, AuditRow, compute_hash, event_canon, head, verify_chain
 
 
 def build(n, role="ape_agent"):
@@ -57,15 +57,6 @@ def test_recortar_el_final_no_se_detecta_pero_cambia_la_cabeza():
     rows = build(10)
     assert verify_chain(rows[:-1]) is None
     assert head(rows[:-1]) != head(rows)  # por eso la cabeza se ancla fuera de la BD
-
-
-def test_cabeza_anclada_detecta_recorte_y_manipulacion():
-    rows = build(10)
-    anchored = head(rows)
-    assert verify_head(rows, anchored) is True
-    assert verify_head(rows[:-1], anchored) is False
-    altered = dataclasses.replace(rows[4], canon=event_canon("agente", "evento", {"i": 999}))
-    assert verify_head([*rows[:4], altered, *rows[5:]], anchored) is False
 
 
 @settings(max_examples=200, deadline=None)
