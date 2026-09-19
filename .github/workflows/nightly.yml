@@ -1,0 +1,33 @@
+# Verificación diaria de la auditoría + copia de seguridad cifrada.
+# Además sirve de actividad regular contra la base de datos.
+name: nightly
+on:
+  schedule: [{ cron: "17 3 * * *" }]
+  workflow_dispatch:
+jobs:
+  audit-and-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar cliente de PostgreSQL y age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client age
+      - name: Verificar la cadena de auditoría y anclar la cabeza
+        env:
+          DATABASE_URL_ADMIN: ${{ secrets.DATABASE_URL_ADMIN }}
+        run: |
+          broken=$(psql "$DATABASE_URL_ADMIN" -tAc "select coalesce(ape.audit_verify()::text,'ok')")
+          head=$(psql "$DATABASE_URL_ADMIN" -tAc "select coalesce((select hash from ape.audit_event order by seq desc limit 1),'vacia')")
+          echo "cadena: $broken" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "cabeza: $head"  | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$broken" = "ok" ] || { echo "::error::cadena de auditoría rota en seq=$broken"; exit 1; }
+      - name: Copia de seguridad cifrada del esquema ape
+        env:
+          DATABASE_URL_ADMIN: ${{ secrets.DATABASE_URL_ADMIN }}
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+        run: |
+          pg_dump "$DATABASE_URL_ADMIN" --schema=ape --no-owner | gzip | age -r "$AGE_PUBLIC_KEY" > backup.sql.gz.age
+          ls -l backup.sql.gz.age
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backup-ape
+          path: backup.sql.gz.age
+          retention-days: 30
