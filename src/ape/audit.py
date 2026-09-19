@@ -58,12 +58,7 @@ def head(rows: Iterable[AuditRow]) -> str:
 
 
 def verify_head(rows: Iterable[AuditRow], expected_head: str) -> bool:
-    """Comprueba que la cadena es íntegra y termina en una cabeza esperada.
-
-    La verificación de la cadena por sí sola no detecta que se hayan eliminado
-    eventos del final. Comparar la cabeza calculada con un valor anclado fuera
-    de la base de datos sí detecta ese recorte.
-    """
+    """Comprueba que la cadena es íntegra y termina en una cabeza esperada."""
     if verify_chain(rows) is not None:
         return False
     return head(rows) == expected_head

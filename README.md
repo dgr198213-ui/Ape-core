@@ -1,6 +1,6 @@
-# ape-core — Fase 0 del Asistente Personal Evolutivo
+# ape-core — Fases 0 y 1 del Asistente Personal Evolutivo
 
-Núcleo seguro sobre el que se construye el resto del agente. **Sin él no se activa ninguna iniciativa.**
+Fase 0: núcleo seguro. Fase 1: memoria con olvido activo, bandeja de entrada, ciclo que **percibe, recuerda, planifica y propone (nunca ejecuta)**, aprobaciones y parada desde la línea de comandos.
 
 ## Qué contiene
 
@@ -15,17 +15,47 @@ Núcleo seguro sobre el que se construye el resto del agente. **Sin él no se ac
 | Clasificación de datos | `src/ape/classification.py` | Los datos sensibles nunca salen a endpoints remotos; lo desconocido falla cerrado |
 | CI y copias | `.github/workflows` | Pruebas en cada push; verificación diaria de la cadena y copia cifrada |
 
+## Fase 1: qué añade
+
+| Pieza | Dónde | Qué garantiza |
+|---|---|---|
+| Memoria con suelo de sensibilidad | `0004_*.sql` | La política (`source_min_sensitivity`) fija la clase mínima por origen; un origen desconocido es clase 2. El agente no puede rebajarla, reescribir recuerdos ni fijarlos |
+| Olvido activo | `ape.memory_forget()` | Si se supera `memory_max_rows`, conserva los de mayor `salience × 0,5^(días/vida media)` hasta el 90 %; lo fijado nunca se olvida |
+| Bandeja de entrada | `ape.inbox` | La BD marca si el mensaje es de Dani o externo; el agente no puede hacerse pasar por Dani |
+| Router de modelos | `router.py` | Falla cerrado: sin endpoint elegible para la clase del dato, no sale ni una petición |
+| Planificador | `planner.py` | El modelo solo emite JSON; el contenido de terceros va en bloques `<untrusted>` que no pueden cerrarse |
+| Ciclo | `cycle.py` | Solo propone. Corre sin la clave de aprobaciones. Todo lo derivado de contenido externo queda marcado `external_content` |
+| Administración | `admin.py`, `cli.py` | Aprobar (con confirmación del id), rechazar, parar, reanudar, verificar la cadena |
+
+## Uso diario (`ape --help`)
+
+```sh
+export APE_DSN_ADMIN='postgresql://...'      # tu conexión de propietario
+ape say "revisa oportunidades de ingresos sin capital"   # deja un mensaje al agente
+ape pending                                  # acciones N3 que esperan tu aprobación (con sus argumentos)
+APE_APPROVAL_SECRET=<hex> ape approve <id>   # pide escribir los 8 primeros caracteres del id
+ape reject <id>
+ape kill "motivo"                            # PARADA inmediata
+ape resume
+ape audit-verify
+APE_DSN_AGENT=... APE_CONFIG=config.json ape cycle   # un ciclo (solo propone)
+```
+
+**Configuración de modelos:** copia `config.example.json` a `config.json`, sustituye `<MODELO>` y define las variables de entorno con las claves. Las URL de Gemini y Z.ai son las de sus interfaces compatibles con OpenAI **según mi conocimiento, sin verificar**: compruébalas en su documentación. Por defecto ningún endpoint remoto está marcado `privacy_reviewed`, así que **solo recibe datos de clase 0 (públicos)**. Los mensajes que escribes tú (`manual_dani`) son clase 1: hasta que revises los términos de datos de un proveedor y lo marques `privacy_reviewed: true`, o tengas un modelo local, el agente los guarda pero no los procesa.
+
 ## Estado de verificación
 
-- **78 pruebas en verde** (38 unitarias y de propiedades + 40 de integración) contra **PostgreSQL 16.15 con pgvector 0.6.0 reales**.
-- Se probó por **mutación**: al quitar la exigencia de aprobación en la BD y en el motor, las pruebas fallan (5 fallos).
-- **Desplegado y verificado en Supabase** (proyecto `ape-core`, `eu-central-1`, plan gratuito, PostgreSQL 17, pgvector 0.8.2), 19-sep-2026:
-  - Las 14 funciones del esquema tienen el mismo hash que las de la base local construida desde estos archivos.
+- **150 pruebas en verde** contra **PostgreSQL 16.15 con pgvector 0.6.0 reales**, incluidos servidores HTTP reales en loopback para el router y Telegram, y la CLI ejecutada como proceso.
+- Se probó por **mutación** (7 mutaciones: aprobación en la BD y en el motor, elegibilidad del router, contaminación por origen externo, firma con hash falso, suelo de sensibilidad, escape de `<untrusted>`): las pruebas fallan en todas (22 fallos en total).
+- **Desplegado y verificado en Supabase** (proyecto `ape-core`, `eu-central-1`, plan gratuito, PostgreSQL 17, pgvector 0.8.2), 19-sep-2026, migraciones 0001–0004:
+  - Las 19 funciones del esquema tienen el mismo código, `SECURITY DEFINER` y `search_path` que las de la base local construida desde estos archivos.
   - Pruebas de comportamiento en la base real (con marcha atrás): nivel fijado por el registro, N3 sin aprobación rechazado, aprobaciones inválidas rechazadas, libro de gasto, parada, auditoría íntegra e inmutable, memoria vectorial. Todas correctas.
   - Privilegios por catálogo: el agente y el ejecutor no tienen ningún privilegio de escritura sobre el núcleo; el ejecutor solo puede actualizar la columna `status`; nadie salvo el propietario puede ejecutar `ape.kill()`; los roles de la API (`anon`, `authenticated`, `service_role`) no tienen acceso al esquema `ape`.
   - Avisos de seguridad de Supabase: 0 tras `0003_hardening.sql` (antes había 4).
-- **Cabeza de la auditoría anclada** (11 eventos, 19-sep-2026): `4390fe91774e6a6eef402ec08c5fe229735b4d4d0d97b6f1bc501b9f6e5f669a`. Cualquier recorte del final de la cadena cambiaría este valor.
+- **Cabeza de la auditoría anclada** (14 eventos, 19-sep-2026, tras la Fase 1): `3cc05a995b96ac96b3f89226dd9b0049a09f96813ce098c5c56ce7cd0f7634f4` (la anterior, con 11 eventos: `4390fe91…f669a`). Cualquier recorte del final de la cadena cambiaría este valor.
 - **No verificado:**
+  - **Las llamadas reales a los proveedores de modelos y a Telegram.** El entorno de pruebas no tiene salida a esas redes: el router y el notificador solo se han probado contra servidores simulados en loopback.
+  - **El ciclo no está programado todavía** (falta el disparador periódico) y **no hay proveedor de embeddings**: sin él, la recuperación de memoria usa la puntuación y no la similitud.
   - Los workflows de GitHub (`ci.yml`, `nightly.yml`) y la conexión desde Actions a Supabase (la conexión directa puede requerir IPv6; si falla, usar la cadena del *pooler*).
   - El comportamiento *con los roles reales* `ape_agent` y `ape_executor` en Supabase. El conector no permite conectarse como ellos, así que los triggers que dependen de `session_user` (estado forzado a `propuesta`, estrategias en sombra, rol registrado en la auditoría) solo se han probado en la base local, no en la de Supabase.
   - Que la actividad del workflow nocturno evite la pausa por inactividad del plan gratuito.
@@ -71,6 +101,7 @@ Núcleo seguro sobre el que se construye el resto del agente. **Sin él no se ac
 - El nivel de una acción sale del registro `tool_spec`; **registrar una herramienta mal clasificada** (p. ej. un pago marcado como N1) rompe la protección. Revisa cada herramienta nueva a mano.
 - La dimensión del embedding (768) está por confirmar.
 
-## Siguiente: Fase 1
+## Siguiente
 
-Memoria con olvido activo, ciclo programado que solo percibe y propone, y el canal con Dani (aprobar y `/kill`).
+- **Fase 1b:** disparador periódico del ciclo, proveedor de embeddings y percepción de fuentes reales (correo, calendario).
+- **Fase 2:** ejecutor con herramientas N0–N2 vía MCP; las N3 solo con aprobación válida.

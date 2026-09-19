@@ -1,0 +1,13 @@
+{
+  "endpoints": [
+    {"name": "gemini-free", "kind": "remote_free",
+     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+     "model": "<MODELO>", "api_key_env": "GEMINI_API_KEY", "privacy_reviewed": false},
+    {"name": "zai-free", "kind": "remote_free",
+     "base_url": "https://api.z.ai/api/paas/v4",
+     "model": "<MODELO>", "api_key_env": "ZAI_API_KEY", "privacy_reviewed": false},
+    {"name": "ollama", "kind": "local",
+     "base_url": "http://localhost:11434/v1", "model": "<MODELO>"}
+  ],
+  "telegram": {"token_env": "APE_TELEGRAM_TOKEN", "chat_id_env": "APE_TELEGRAM_CHAT_ID"}
+}

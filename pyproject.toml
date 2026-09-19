@@ -3,7 +3,10 @@ name = "ape-core"
 version = "0.1.0"
 description = "Asistente Personal Evolutivo — Fase 0: núcleo seguro (motor de políticas, auditoría, clasificación de datos)"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["psycopg[binary]>=3.1"]
+
+[project.scripts]
+ape = "ape.cli:main"
 
 [project.optional-dependencies]
 db = ["psycopg[binary]>=3.1"]

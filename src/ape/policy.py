@@ -118,7 +118,9 @@ def sign_approval(secret: bytes, action_id: str, ahash: str, approver: str,
 
 
 def _approval_problem(req: ActionRequest, ahash: str, approval: Approval,
-                      state: PolicyState, secret: bytes, now: datetime) -> Optional[str]:
+                      state: PolicyState, secret: Optional[bytes], now: datetime) -> Optional[str]:
+    if secret is None:
+        return "este proceso no tiene la clave de aprobaciones: no puede validar aprobaciones"
     if approval.action_id != req.id:
         return "la aprobación es de otra acción"
     if approval.args_hash != ahash:
@@ -137,9 +139,11 @@ def _approval_problem(req: ActionRequest, ahash: str, approval: Approval,
 
 
 class PolicyEngine:
-    def __init__(self, registry: ToolRegistry, approval_secret: bytes):
-        if not approval_secret:
-            raise ValueError("se requiere la clave de aprobaciones")
+    def __init__(self, registry: ToolRegistry, approval_secret: Optional[bytes] = None):
+        """`approval_secret=None`: modo de solo propuesta (el ciclo del agente NO tiene la clave;
+        puede clasificar acciones, pero no validar aprobaciones). El ejecutor sí la tiene."""
+        if approval_secret is not None and not approval_secret:
+            raise ValueError("la clave de aprobaciones no puede estar vacía")
         self._registry = registry
         self._secret = approval_secret
 

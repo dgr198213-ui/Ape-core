@@ -131,9 +131,18 @@ def test_aprobaciones_invalidas(mutate):
     assert not d.allowed and d.code == Code.BAD_APPROVAL
 
 
-def test_el_motor_exige_clave():
+def test_la_clave_no_puede_ser_vacia():
     with pytest.raises(ValueError):
         PolicyEngine(REGISTRY, b"")
+
+
+def test_motor_sin_clave_clasifica_pero_no_valida_aprobaciones():
+    solo_proponer = PolicyEngine(REGISTRY, None)
+    r = req("payment.execute", cost="10")
+    assert solo_proponer.evaluate(r, PolicyState(), now=NOW).code == Code.NEEDS_APPROVAL
+    d = solo_proponer.evaluate(r, PolicyState(), approval_for(r), now=NOW)
+    assert not d.allowed and d.code == Code.BAD_APPROVAL
+    assert solo_proponer.evaluate(req("memory.search"), PolicyState(), now=NOW).allowed
 
 
 # ---------------- propiedades ----------------
